@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.CookiePolicy;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -42,6 +43,14 @@ builder.Services.AddAuthentication(options =>
         ValidAudience = jwtSettings["Audience"],
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings["SecretKey"]))
     };
+    options.Events = new JwtBearerEvents
+    {
+        OnMessageReceived = context =>
+        {
+            context.Token = context.Request.Cookies["cookie-now"];
+            return Task.CompletedTask;
+        }
+    };
 });
 var app = builder.Build();
 if (app.Environment.IsDevelopment())
@@ -53,12 +62,16 @@ if (app.Environment.IsDevelopment())
 
 app.UseDeveloperExceptionPage();
 app.UseHttpsRedirection();
-
+app.UseCookiePolicy(new CookiePolicyOptions
+{
+    MinimumSameSitePolicy=SameSiteMode.Strict,
+    HttpOnly=HttpOnlyPolicy.Always,
+    Secure=CookieSecurePolicy.Always
+});
 app.UseCors("CORSPolicy");
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
-
 app.Run();
 public partial class Program { }

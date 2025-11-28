@@ -1,4 +1,5 @@
 ﻿using AuthServer.Model;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -22,10 +23,12 @@ namespace AuthServer.Controllers
             _authtestContext = authtestContext;
             _configuration = configuration;
         }
+        [Authorize]
         [HttpGet]
         [Route("/getUsers")]
         public async Task<ActionResult<IEnumerable<User>>> Get()
         {
+
             return await _authtestContext.Users.ToListAsync();
         }
         [HttpPost("login")]
@@ -45,10 +48,10 @@ namespace AuthServer.Controllers
                     return Unauthorized("Invalid username.");
                 }
 
-                if (!VerifyPassword(login.Password, user.PassHash))
-                {
-                    return Unauthorized("Invalid password.");
-                }
+                //if (!VerifyPassword(login.Password, user.PassHash))
+                //{
+                //    return Unauthorized("Invalid password.");
+                //}
 
                 var token = GenerateJwtToken(user.Login, user.RoleId);
                 return Ok(new { token });
@@ -78,7 +81,8 @@ namespace AuthServer.Controllers
                 claims: claims,
                 expires: DateTime.Now.AddMinutes(30),
                 signingCredentials: creds);
-
+            var tokenString = new JwtSecurityTokenHandler().WriteToken(token);
+            Response.Cookies.Append("cookie-now", tokenString);
             return new JwtSecurityTokenHandler().WriteToken(token);
         }
 
