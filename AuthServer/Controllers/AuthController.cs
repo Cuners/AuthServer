@@ -41,7 +41,10 @@ namespace AuthServer.Controllers
 
             try
             {
-                var user = await _authtestContext.Users.FirstOrDefaultAsync(u => u.Login == login.Username);
+                var user = await _authtestContext.Users
+                                .Include(u => u.UsersRoles)
+                                .ThenInclude(ur => ur.Role)
+                                .FirstOrDefaultAsync(u => u.Login == login.Username);
 
                 if (user == null)
                 {
@@ -53,7 +56,7 @@ namespace AuthServer.Controllers
                 //    return Unauthorized("Invalid password.");
                 //}
 
-                var token = GenerateJwtToken(user.Login, user.RoleId);
+                var token = GenerateJwtToken(user);
                 return Ok(new { token });
             }
             catch (Exception EX)
@@ -61,16 +64,40 @@ namespace AuthServer.Controllers
                 return StatusCode(500, EX.Message);
             }
         }
+        [HttpPost("registration")]
+        public async Task<ActionResult<IEnumerable<User>>> Registration(User user)
+        {
+            if (user == null)
+            {
+                return BadRequest();
+            }
+            
+            _authtestContext.Users.Add(user);
+            var role = await _authtestContext.Roles
+                             .FirstOrDefaultAsync(r => r.RoleName == "User");
 
-        private string GenerateJwtToken(string username, int? role)
+            user.UsersRoles.Add(new UsersRole
+            {
+                RoleId = role.RoleId
+            });
+            await _authtestContext.SaveChangesAsync();
+            var token = GenerateJwtToken(user);
+            return Ok(new { token });
+            //return Ok(user);
+        }
+        private string GenerateJwtToken(User user)
         {
             var jwtSettings = _configuration.GetSection("JwtSettings");
-            var claims = new[]
+            var claims = new List<Claim>
             {
-            new Claim(JwtRegisteredClaimNames.Sub, username),
-            new Claim(ClaimTypes.Role, role.ToString()),
-            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
-        };
+                new Claim(JwtRegisteredClaimNames.Sub, user.Login),
+                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+            };
+
+            foreach (var ur in user.UsersRoles)
+            {
+                claims.Add(new Claim(ClaimTypes.Role, ur.Role.RoleName));
+            }
 
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings["SecretKey"]));
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
@@ -83,7 +110,7 @@ namespace AuthServer.Controllers
                 signingCredentials: creds);
             var tokenString = new JwtSecurityTokenHandler().WriteToken(token);
             Response.Cookies.Append("cookie-now", tokenString);
-            return new JwtSecurityTokenHandler().WriteToken(token);
+            return tokenString;
         }
 
         private bool VerifyPassword(string password, string storedHash)

@@ -52,6 +52,13 @@ builder.Services.AddAuthentication(options =>
         }
     };
 });
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("AdminPolicy", policy =>
+    {
+        policy.RequireRole("Admin");
+    });
+});
 var app = builder.Build();
 if (app.Environment.IsDevelopment())
 {
@@ -73,5 +80,9 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapGet("get", () =>
+{
+    return Results.Ok("ok");
+}).RequireAuthorization("AdminPolicy");
 app.Run();
 public partial class Program { }
