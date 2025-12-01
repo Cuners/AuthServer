@@ -1,4 +1,6 @@
+using AuthServer.Infrastructure.Authorization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.CookiePolicy;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -52,12 +54,11 @@ builder.Services.AddAuthentication(options =>
         }
     };
 });
+builder.Services.AddScoped<IAuthorizationHandler, PermissionHandler>();
 builder.Services.AddAuthorization(options =>
 {
-    options.AddPolicy("AdminPolicy", policy =>
-    {
-        policy.RequireRole("Admin");
-    });
+    options.AddPolicy("Get",
+        policy => policy.Requirements.Add(new PermissionRequirement("Read")));
 });
 var app = builder.Build();
 if (app.Environment.IsDevelopment())
@@ -83,6 +84,7 @@ app.MapControllers();
 app.MapGet("get", () =>
 {
     return Results.Ok("ok");
-}).RequireAuthorization("AdminPolicy");
+}).RequireAuthorization("Get");
+
 app.Run();
 public partial class Program { }

@@ -23,7 +23,7 @@ namespace AuthServer.Controllers
             _authtestContext = authtestContext;
             _configuration = configuration;
         }
-        [Authorize]
+        [Authorize(Policy="Get")]
         [HttpGet]
         [Route("/getUsers")]
         public async Task<ActionResult<IEnumerable<User>>> Get()
@@ -93,7 +93,6 @@ namespace AuthServer.Controllers
                 new Claim(JwtRegisteredClaimNames.Sub, user.Login),
                 new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
             };
-
             foreach (var ur in user.UsersRoles)
             {
                 claims.Add(new Claim(ClaimTypes.Role, ur.Role.RoleName));
