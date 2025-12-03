@@ -1,4 +1,5 @@
 using AuthServer.Infrastructure.Authorization;
+using AuthServer.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.CookiePolicy;
@@ -49,12 +50,13 @@ builder.Services.AddAuthentication(options =>
     {
         OnMessageReceived = context =>
         {
-            context.Token = context.Request.Cookies["cookie-now"];
+            context.Token = context.Request.Cookies["access_token"];
             return Task.CompletedTask;
         }
     };
 });
 builder.Services.AddScoped<IAuthorizationHandler, PermissionHandler>();
+builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("Get",

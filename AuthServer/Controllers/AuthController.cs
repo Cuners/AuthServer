@@ -1,10 +1,12 @@
 ﻿using AuthServer.Model;
+using AuthServer.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
+using System.Data;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
@@ -17,11 +19,11 @@ namespace AuthServer.Controllers
     public class AuthController : Controller
     {
         private AuthTestContext? _authtestContext;
-        private readonly IConfiguration _configuration;
-        public AuthController(AuthTestContext authtestContext, IConfiguration configuration)
+        private readonly ITokenService _tokenService;
+        public AuthController(AuthTestContext authtestContext, ITokenService tokenService)
         {
             _authtestContext = authtestContext;
-            _configuration = configuration;
+            _tokenService = tokenService;
         }
         [Authorize(Policy="Get")]
         [HttpGet]
@@ -30,7 +32,7 @@ namespace AuthServer.Controllers
         {
 
             return await _authtestContext.Users.ToListAsync();
-        }
+        }   
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest login)
         {
@@ -50,14 +52,14 @@ namespace AuthServer.Controllers
                 {
                     return Unauthorized("Invalid username.");
                 }
+                var claims = _tokenService.GenerateUserClaims(user);
 
-                //if (!VerifyPassword(login.Password, user.PassHash))
-                //{
-                //    return Unauthorized("Invalid password.");
-                //}
+                var accesstoken = _tokenService.GenerateAccessToken(claims);
+                var refreshtoken = _tokenService.GenerateRefreshToken(claims);
 
-                var token = GenerateJwtToken(user);
-                return Ok(new { token });
+                SetCookies(accesstoken, refreshtoken);
+
+                return Ok(new { accesstoken });
             }
             catch (Exception EX)
             {
@@ -80,38 +82,58 @@ namespace AuthServer.Controllers
             {
                 RoleId = role.RoleId
             });
+
             await _authtestContext.SaveChangesAsync();
-            var token = GenerateJwtToken(user);
-            return Ok(new { token });
+            var claims = _tokenService.GenerateUserClaims(user);
+            var accesstoken = _tokenService.GenerateAccessToken(claims);
+            var refreshtoken = _tokenService.GenerateRefreshToken(claims);
+
+            SetCookies(accesstoken, refreshtoken);
+            return Ok(new { accesstoken });
             //return Ok(user);
         }
-        private string GenerateJwtToken(User user)
+        [HttpPost("logout")]
+        public async Task<IActionResult> Logout()
         {
-            var jwtSettings = _configuration.GetSection("JwtSettings");
-            var claims = new List<Claim>
+            if (!Request.Cookies.TryGetValue("refresh_token", out var refreshToken))
             {
-                new Claim(JwtRegisteredClaimNames.Sub, user.Login),
-                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
-            };
-            foreach (var ur in user.UsersRoles)
-            {
-                claims.Add(new Claim(ClaimTypes.Role, ur.Role.RoleName));
+                return Ok("No active session");
             }
+            Response.Cookies.Delete("access_token");
+            Response.Cookies.Delete("refresh_token");
+            return Ok("Logged out");
+        }
+        [HttpPost("refresh")]
+        public IActionResult Refresh()
+        {
+            if (!Request.Cookies.TryGetValue("refresh_token", out var refreshToken))
+                return Unauthorized();
+            var access = _tokenService.RefreshTokens(refreshToken, out var newRefresh);
 
-            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings["SecretKey"]));
-            var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+            SetCookies(access, newRefresh);
 
-            var token = new JwtSecurityToken(
-                issuer: jwtSettings["Issuer"],
-                audience: jwtSettings["Audience"],
-                claims: claims,
-                expires: DateTime.Now.AddMinutes(30),
-                signingCredentials: creds);
-            var tokenString = new JwtSecurityTokenHandler().WriteToken(token);
-            Response.Cookies.Append("cookie-now", tokenString);
-            return tokenString;
+            return Ok("Refreshed");
         }
 
+
+        private void SetCookies(string access, string refresh)
+        {
+            Response.Cookies.Append("access_token", access, new CookieOptions
+            {
+                HttpOnly = true,
+                Expires = DateTime.UtcNow.AddMinutes(15),
+                SameSite = SameSiteMode.Strict,
+                Secure = true
+            });
+
+            Response.Cookies.Append("refresh_token", refresh, new CookieOptions
+            {
+                HttpOnly = true,
+                Expires = DateTime.UtcNow.AddDays(7),
+                SameSite = SameSiteMode.Strict,
+                Secure = true
+            });
+        }
         private bool VerifyPassword(string password, string storedHash)
         {
             using (var sha256 = SHA256.Create()) 
@@ -119,7 +141,6 @@ namespace AuthServer.Controllers
                 var computedHash = sha256.ComputeHash(Encoding.UTF8.GetBytes(password)); 
                 return computedHash.SequenceEqual(Convert.FromBase64String(storedHash)); 
             }
-            // return BCrypt.Net.BCrypt.Verify(password, storedHash);
         }
     }
 

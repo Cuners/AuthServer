@@ -23,9 +23,9 @@ namespace AuthServer.Infrastructure.Authorization
         {
             // роли из токена
             var roles = context.User.Claims
-                  .Where(c => c.Type == ClaimTypes.Role)
-                  .Select(c => c.Value)
-                  .ToList();
+                        .Where(c => c.Type == ClaimTypes.Role)
+                        .Select(c => c.Value)
+                        .ToList();
 
             if (!roles.Any())
                 return;
@@ -38,10 +38,10 @@ namespace AuthServer.Infrastructure.Authorization
             {
                 entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5);
                 var perm = await _authtestContext.RolesPermissions
-                    .Where(rp => roles.Contains(rp.Role.RoleName))
-                    .Select(rp => rp.Permission.PermissionName)
-                    .Distinct()
-                    .ToListAsync();
+                                .Where(rp => roles.Contains(rp.Role.RoleName))
+                                .Select(rp => rp.Permission.PermissionName)
+                                .Distinct()
+                                .ToListAsync();
                 // Загружаем permissions для всех ролей
                 return perm;
             });
